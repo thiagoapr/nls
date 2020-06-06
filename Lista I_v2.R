@@ -2,6 +2,9 @@ library(mfx)
 library(tidyverse)
 library(lmtest)
 library(ggplot2)
+library(matlib)
+
+#-----------------------------------------------------------------------------------------
 
 # Seed
 set.seed(20201)
@@ -52,36 +55,47 @@ nls_results <- nls(
              b4 = 0.01, b5 = 0.01, b6 = 0.01)
 )
 
+coef_nls1 <- coef(nls_results)
+
 #------------------------------------------------------------------------
 
-# Cria a função
+# Define a função
 
 min.nls <- function(data, par) {
   with(df, sum((wage - exp(par[1] * income + par[2] * vote_share + 
                            par[3] * age + par[4] * race_b + par[5] * race_c + par[6] * race_d))^2))
 }
 
-# Minimização
+# Minimiza a função
 
-result <- optim(par = c(0.1, 0.1, 0.1, 0.1, 0.1, 0.1), fn = min.nls, data = df, hessian = TRUE)
+result <- optim(par = rep(0.001, 6), fn = min.nls, data = df, hessian = TRUE)
 
-par <- result$par
+
+# Redefine matrizes
 
 Y <- df$wage
 
 X <- X_dummy %>% select(-race, - race_a) %>% as.matrix()
 
-hessian <- result$hessian
+beta <- result$par
 
 #------------------------------------------------------------------------
 
+# Calcula o score e a hessiana
 
+# https://www.mapleprimes.com/DocumentFiles/89703/271559/appendix-nonlinear-r.pdf
 
+score <- Y - exp(X %*% beta) %*% t(exp(X %*% coef_nls1)) %*% X
+
+A <- result$hessian
+
+B <- t(score) %*% score
       
+#------------------------------------------------------------------------
 
-            
+# Variância assintótica
+
+Avar <- (inv(A) %*% B %*% inv(A))/1000
   
-
-
 
 
