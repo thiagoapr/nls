@@ -83,8 +83,6 @@ beta <- result$par
 
 # Calcula o score e a hessiana
 
-# https://www.mapleprimes.com/DocumentFiles/89703/271559/appendix-nonlinear-r.pdf
-
 score <- Y - exp(X %*% beta) %*% t(exp(X %*% coef_nls1)) %*% X
 
 A <- result$hessian
