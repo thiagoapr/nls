@@ -3,8 +3,7 @@ title: "Econometria II - Lista I"
 author: "Thiago Pastorelli Rodrigues"
 output:
   pdf_document: default
-  html_document: 
-  keep_md: true
+  html_document: default
 ---
 
 ```{r setup, include=FALSE}
