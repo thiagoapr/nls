@@ -1,0 +1,212 @@
+---
+title: "Econometria II - Lista I"
+author: "Thiago Pastorelli Rodrigues"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(mfx)
+library(tidyverse)
+library(lmtest)
+library(ggplot2)
+library(matlib)
+```
+
+# NLS Exponencial
+
+Considere um problema em que a equação estrutural é $Y=e^{X\beta}+U$. O Estimador-M de $\beta_0$, $\hat{\beta}^{nls}$, resolve o problema amostral análogo  $\min_{\beta} E[(Y - e^{X\beta})^2|X=x]$. Utilizando uma base de dados simulada, vamos estimar o salário futuro (wage) de um candidato como função da renda municipal (income), proporção de votos recebidos (vote share), idade (age) e raça/cor (race).  
+
+## Construção da base de dados simulada
+
+Cria base de dados simulada. Note que $wage$, normalamente distribuida, é composta por quatro grupos com médias e desvios-padrões deferentes; $vote_share$ tem distribuição uniforme; $age$ distribuição Poisson; e $race$ é uma variável categórica. 
+
+\vspace{.3 cm}
+
+```{r box1}
+
+set.seed(20201)
+
+X <- data.frame(
+  income = rnorm(n = 1000, mean = c(20, 30, 40, 50), sd = c(6, 6, 9, 9)), 
+  vote_share = runif(n = 1000, min = 0, max = 1), 
+  age = rpois(n = 1000, lambda = 50), 
+  race = rep(letters[1:4], times = 250) 
+)
+
+# Cria dummies associadas às variável categórica race
+X_dummy <- fastDummies::dummy_cols(X)
+```
+
+Cria o termo de erro com distribuição normal e heterocedástico:
+
+\vspace{.3 cm}
+
+```{r box2}
+U <- rnorm(n = 1000, mean = 0, sd = 0.0002 * X_dummy$income^2) 
+```
+
+Define os parâmetros verdadeiros do modelo:
+
+\vspace{.3 cm}
+
+```{r box3}
+true_beta = c(0.05, 0.2, 0.04, 0.06, 0.08, 0.1)
+true_delta = 0.0
+```
+
+Cria a variável dependente dada pelo modelo estrutural:
+
+\vspace{.3 cm}
+
+```{r box4}
+
+# This is X * beta
+X_beta <- X_dummy$income * true_beta[1] + X_dummy$vote_share * true_beta[2] + 
+  X_dummy$age * true_beta[3] + X_dummy$race_b * true_beta[4] + 
+  X_dummy$race_c * true_beta[5] + X_dummy$race_d * true_beta[6]
+
+# The true equation has delta 0.
+wage = exp(X_beta + true_delta * X_beta^2 + U)
+```
+
+Consolida a base de dados
+
+\vspace{.3 cm}
+
+```{r box 5}
+df <- cbind(X_dummy, wage)
+```
+
+## Estimação com pacotes estatísticos
+
+Criados os dados simulados, podemos aplicar os métodos de estimação. Aqui ué usado métodos já programados em pacotes estatísticos, para exemplo e comparação.
+
+\vspace{.3 cm}
+
+```{r box6}
+
+nls <- nls(
+  wage ~ exp(b1 * income + b2 * vote_share + 
+               b3 * age + b4 * race_b + b5 * race_c + b6 * race_d),
+  data=df,
+  start=list(b1 = 0.01, b2 = 0.01, b3 = 0.01, 
+             b4 = 0.01, b5 = 0.01, b6 = 0.01)
+)
+
+```
+
+\newpage
+
+# Estimação sem o uso de funções pré-programadas
+
+## Estimativa de NLS
+
+Definimos a seguinte função objetivo $[y_i - e^{x_i \beta}]^2$:
+
+\vspace{.3 cm}
+
+```{r box7}
+
+modelo <- function(b) {
+  m <- exp(b[1]*df$income + b[2]*df$vote_share + b[3]*df$age + b[4]*df$race_b +
+           b[5]*df$race_c + b[6]*df$race_d)
+  e <- wage - m
+  return(sum(e^2))
+}
+```
+
+O processo de minimização da função objetivo consiste em determinar o gradiente e os valores iniciais dos parâmetros.
+
+\vspace{.3 cm}
+
+```{r box8}
+
+# Define o gradiente utizado na minimização
+grad<-function(b) {
+  m <- exp(b[1]*df$income + b[2]*df$vote_share + b[3]*df$age + b[4]*df$race_b +
+           b[5]*df$race_c + b[6]*df$race_d)
+  e <- wage - m
+  c(sum(-2*e*df$income*m), sum(-2*e*df$vote_share*m), sum(-2*e*df$age*m), 
+    sum(-2*e*df$race_b*m), sum(-2*e*df$race_c*m),sum(-2*e*df$race_d*m))
+}
+
+# Minimizaçao da função objetivo
+mod_result <- optim(rep(0.01, 6), modelo, grad, method = "BFGS")
+
+```
+
+
+Note que os valores dos parâmetros estimados pelo modelo é próximo aos valores estimados pelo modelo pré-programado.
+
+\vspace{.3 cm}
+
+```{r box9}
+
+# Comparação dos parâmetros
+
+par <- mod_result$par
+
+rbind(coef(nls), mod_result$par)
+```
+
+
+## Matriz assintótica de variância-covariância dos estimadores NLS
+
+Temos:    
+
+$\hat{Avar}(\hat{\beta}) = \frac{\hat{A}^{-1} \hat{B} \hat{A}^{-1}}{N}$,  
+
+em que $\hat{A}^{-1} = 2\sum^{N}_{i=1} e^{2x_i\beta}x_i'x_i$ e $\hat{B}^{-1} = 4\sum^{N}_{i=1} u_i^2 e^{2x_i\beta}x_i'x_i$.
+
+\vspace{.3 cm}
+
+```{r box10}
+
+# A
+
+A <- optimHess(mod_result$par, modelo, grad)
+
+
+sigma <- mod_result$value/(1000-6)
+
+Avar <- sigma*inv(0.5*A)
+
+DesvPad <- diag(Avar)^(1/2)
+
+DesvPad
+
+```
+
+Por simplificação, computamos:
+
+$\hat{Avar}(\hat{\beta}) = \sigma^2 (\sum^{N}_{i=1} \hat{A})^{-1}$, 
+
+em que $\hat{\sigma}^2 = \frac{1}{N-P} \sum^{N}_{i=1} u_i^2 = \frac{SSR}{N-P}$.
+
+## Compação com OLS
+
+Como o modelo OLS está mal especificado, o gráfico sugere que a estimação é inconsistente. Note a dispersão dos valores preditos para as rendas mais altas. 
+
+\vspace{.3 cm}
+
+```{r box11, fig.width = 8, fig.height = 4, fig.align = "center"}
+
+# Estiamção OLS
+ols_results <- lm(wage ~ income + vote_share + age + race, data=df)
+
+# Predicted values
+df$ols_predict <- predict(ols_results)
+df$nls_predict <- exp(par[1]*df$income + par[2]*df$vote_share + par[3]*df$age + 
+                      par[4]*df$race_b + par[5]*df$race_c + par[6]*df$race_d)
+
+# Plot the predicted values
+ggplot(df, aes(x=income, y=value, color=variable)) + 
+  geom_point(aes(y = wage, col="wage")) +
+  geom_point(aes(y = ols_predict, col="OLS")) + 
+  geom_point(aes(y = nls_predict, col="NLS"))
+
+```
+
